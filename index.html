@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Memory Match</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0b1220" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Memory" />
+<style>
+  :root{
+    --bg:#0b1220;
+    --panel:#111a2e;
+    --line:#1e2a45;
+    --ink:#eef2f7;
+    --soft:#8b98b0;
+    --amber:#fbbf24;
+    --amber-deep:#f59e0b;
+    --green:#4ade80;
+    --red:#fb7185;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overscroll-behavior:none;
+  }
+  body{ display:flex; justify-content:center; touch-action:manipulation; }
+  .app{
+    width:100%; max-width:460px; min-height:100vh; min-height:100dvh;
+    display:flex; flex-direction:column; align-items:center;
+    padding:calc(20px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  header{ width:100%; display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand img{ width:34px; height:34px; border-radius:9px; display:block; }
+  .brand-name{ font-size:20px; font-weight:700; letter-spacing:-0.01em; }
+  .stats{ display:flex; gap:8px; }
+  .stat-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:6px 12px; text-align:center; min-width:64px;
+  }
+  .stat-box .lbl{ font-size:10px; color:var(--soft); text-transform:uppercase; letter-spacing:.08em; }
+  .stat-box .val{ font-size:18px; font-weight:700; color:var(--amber); font-variant-numeric:tabular-nums; }
+
+  .board{
+    width:100%; display:grid; grid-template-columns:repeat(4, 1fr); gap:10px;
+    perspective:800px;
+  }
+  .card{
+    aspect-ratio:1/1; cursor:pointer; position:relative;
+    transform-style:preserve-3d; transition:transform .38s cubic-bezier(.3,1.4,.5,1);
+  }
+  .card.flipped{ transform:rotateY(180deg); }
+  .card.matched{ cursor:default; }
+  .card.matched .face.front{ border-color:var(--green); box-shadow:0 0 0 1px var(--green); }
+  .face{
+    position:absolute; inset:0; border-radius:14px;
+    display:flex; align-items:center; justify-content:center;
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+    border:1px solid var(--line);
+    font-size:clamp(28px, 9vw, 40px);
+    user-select:none;
+  }
+  .face.back{
+    background:linear-gradient(135deg, #16213a, #111a2e);
+  }
+  .face.back::after{
+    content:""; width:34%; height:34%; border-radius:50%;
+    border:2px dashed #2c3c60;
+  }
+  .face.front{
+    background:var(--panel);
+    transform:rotateY(180deg);
+  }
+  .card:active:not(.flipped) .face.back{ transform:scale(.96); }
+  .face.back{ transition:transform .12s ease; }
+
+  .controls{ width:100%; display:flex; gap:10px; margin-top:16px; }
+  .btn{
+    flex:1; border:none; cursor:pointer; font-size:15px; font-weight:700;
+    padding:13px; border-radius:14px;
+  }
+  .btn.primary{ background:var(--amber); color:#3a2503; }
+  .btn.ghost{ background:var(--panel); color:var(--ink); border:1px solid var(--line); flex:0 0 auto; padding:13px 18px; }
+  .btn:active{ transform:scale(.97); }
+
+  .overlay{
+    position:fixed; inset:0; z-index:10;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+    background:rgba(11,18,32,.8); backdrop-filter:blur(4px);
+  }
+  .overlay[hidden]{ display:none; }
+  .sheet{
+    background:var(--panel); border:1px solid var(--line); border-radius:20px;
+    padding:32px 28px; text-align:center; width:100%; max-width:340px;
+  }
+  .sheet h2{ margin:0 0 6px; font-size:26px; }
+  .sheet p{ margin:0 0 4px; color:var(--soft); font-size:14px; line-height:1.55; }
+  .sheet .big{ font-size:15px; color:var(--ink); margin:12px 0 2px; }
+  .sheet .big b{ color:var(--amber); }
+  .sheet .best-line{ font-size:13px; color:var(--green); min-height:20px; }
+  .sheet .btn{ width:100%; margin-top:14px; }
+
+  footer{ margin-top:auto; padding-top:22px; }
+  footer p{ margin:0; font-size:12.5px; color:var(--soft); }
+  footer span{ color:var(--red); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <img src="icon-192.png" alt="" width="34" height="34">
+      <span class="brand-name">Memory Match</span>
+    </div>
+    <div class="stats">
+      <div class="stat-box"><div class="lbl">Moves</div><div class="val" id="moves">0</div></div>
+      <div class="stat-box"><div class="lbl">Time</div><div class="val" id="time">0:00</div></div>
+    </div>
+  </header>
+
+  <div class="board" id="board" role="grid" aria-label="Memory cards"></div>
+
+  <div class="controls">
+    <button class="btn primary" id="restartBtn">Restart</button>
+  </div>
+
+  <footer><p>Made with <span>❤️</span> by sauravhhh</p></footer>
+</div>
+
+<div class="overlay" id="winOverlay" hidden>
+  <div class="sheet">
+    <h2>You did it! 🎉</h2>
+    <p>All pairs found.</p>
+    <p class="big"><b id="winMoves">0</b> moves · <b id="winTime">0:00</b></p>
+    <p class="best-line" id="bestLine"></p>
+    <button class="btn primary" id="againBtn">Play again</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const EMOJI = ['🐶','🐱','🦊','🐼','🦁','🐸','🐵','🐰'];
+  const BEST_KEY = 'memorymatch-best';
+
+  const board = document.getElementById('board');
+  const movesEl = document.getElementById('moves');
+  const timeEl = document.getElementById('time');
+  const winOverlay = document.getElementById('winOverlay');
+  const winMoves = document.getElementById('winMoves');
+  const winTime = document.getElementById('winTime');
+  const bestLine = document.getElementById('bestLine');
+
+  let first, second, lock, moves, matched, timerId, seconds, started;
+
+  function fmt(s){
+    return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  }
+
+  function shuffled(){
+    const deck = EMOJI.concat(EMOJI);
+    for (let i = deck.length - 1; i > 0; i--){
+      const j = (Math.random() * (i + 1)) | 0;
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  }
+
+  function build(){
+    board.innerHTML = '';
+    shuffled().forEach((emo) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.setAttribute('role', 'gridcell');
+      card.dataset.emoji = emo;
+      card.innerHTML = '<div class="face back"></div><div class="face front">' + emo + '</div>';
+      card.addEventListener('click', () => flip(card));
+      board.appendChild(card);
+    });
+  }
+
+  function reset(){
+    first = null; second = null; lock = false;
+    moves = 0; matched = 0; seconds = 0; started = false;
+    movesEl.textContent = '0';
+    timeEl.textContent = '0:00';
+    clearInterval(timerId);
+    winOverlay.hidden = true;
+    build();
+  }
+
+  function startTimer(){
+    started = true;
+    timerId = setInterval(() => {
+      seconds++;
+      timeEl.textContent = fmt(seconds);
+    }, 1000);
+  }
+
+  function flip(card){
+    if (lock || card === first || card.classList.contains('flipped')) return;
+    if (!started) startTimer();
+    card.classList.add('flipped');
+    if (!first){ first = card; return; }
+    second = card;
+    moves++;
+    movesEl.textContent = moves;
+    lock = true;
+    if (first.dataset.emoji === second.dataset.emoji){
+      setTimeout(() => {
+        first.classList.add('matched');
+        second.classList.add('matched');
+        first = null; second = null; lock = false;
+        matched++;
+        if (matched === EMOJI.length) win();
+      }, 350);
+    } else {
+      setTimeout(() => {
+        first.classList.remove('flipped');
+        second.classList.remove('flipped');
+        first = null; second = null; lock = false;
+      }, 700);
+    }
+  }
+
+  function win(){
+    clearInterval(timerId);
+    winMoves.textContent = moves;
+    winTime.textContent = fmt(seconds);
+    const prevBest = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0;
+    if (!prevBest || moves < prevBest){
+      localStorage.setItem(BEST_KEY, String(moves));
+      bestLine.textContent = '🏆 New best: ' + moves + ' moves!';
+    } else {
+      bestLine.textContent = 'Best: ' + prevBest + ' moves';
+    }
+    setTimeout(() => { winOverlay.hidden = false; }, 450);
+  }
+
+  document.getElementById('restartBtn').addEventListener('click', reset);
+  document.getElementById('againBtn').addEventListener('click', reset);
+
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+
+  reset();
+})();
+</script>
+</body>
+</html>
